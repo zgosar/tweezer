@@ -394,7 +394,6 @@ def simulation_example(show=True):
     save_tracked_data("generated_test1\\example_FF.dat", Nframes, positions_st, generate_time(Nframes, 10**-3), laser_powers, traps)
     save_tracked_data_pandas("generated_test1\\example_TP.dat", frames, positions_tp, generate_time(Nframes, 10**-3), laser_powers, traps)
 
-
 class Test(unittest.TestCase):
     """
     Also tests TWV_Reader module.
