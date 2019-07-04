@@ -107,7 +107,7 @@ def save_tracked_data(filename, Nframes, trajectories, times, laser_powers, trap
             tmp += '\n'
             f.write(tmp)
 
-def flood_fill(frame, flood_frame, start_x, start_y, particle_number, treshold=100, invert=False):
+def flood_fill(frame, flood_frame, start_x, start_y, particle_number, treshold=100, invert=False, return_area=False):
     """
     An implementation of a common flood fill algorithm.
     Pixels with brightness above treshold are considered to be inside (below treshold if invert is True).
@@ -122,15 +122,20 @@ def flood_fill(frame, flood_frame, start_x, start_y, particle_number, treshold=1
      - prev_x, prev_y: Previous positions of particle.
      - particle_number: Used to mark this particle in flood_frame
      - treshold, invert, min_size, max_size, max_distance: See simple_tracking.
+     - return_area: 
 
     Returns:
      - flood_frame: Updated flood_frame.
      - particle: Array with data about particle. Position x, y, size in pixels, average brightness and normalization weight.
+       the last element is optional list of coordinates where particle was found
     """
     q = queue.Queue()
     visited = set()
     q.put((start_x, start_y))
-    particle = [0, 0, 0, 0, 0]
+    if return_area:
+        particle = [0, 0, 0, 0, 0, []]
+    else:
+        particle = [0, 0, 0, 0, 0]
     while not q.empty():
         cx, cy = q.get()
         if (cx, cy) in visited:
@@ -147,6 +152,8 @@ def flood_fill(frame, flood_frame, start_x, start_y, particle_number, treshold=1
             particle[2] += 1
             particle[3] += frame[cx][cy]
             particle[4] += frame[cx][cy] - treshold
+            if return_area:
+                particle[5].append([cx, cy])
             q.put((cx+1, cy))
             q.put((cx-1, cy))
             q.put((cx, cy+1))
@@ -157,7 +164,7 @@ def flood_fill(frame, flood_frame, start_x, start_y, particle_number, treshold=1
     return flood_frame, particle
             
 
-def find_particles_first_frame(frame, treshold=100, invert=False, min_size=16, max_size=2500):
+def find_particles_first_frame(frame, treshold=100, invert=False, min_size=16, max_size=2500, return_area=False):
     """
     Finds particles on the first frame.
 
@@ -185,7 +192,7 @@ def find_particles_first_frame(frame, treshold=100, invert=False, min_size=16, m
                 #print('start', cx, cy, particle_number)
                 flood_frame, particle = flood_fill(frame, flood_frame,
                                          cx, cy, particle_number, treshold=treshold,
-                                         invert=invert)
+                                         invert=invert, return_area=return_area)
                 if min_size < particle[2] < max_size:
                     particles.append(particle[:])
                 else:
@@ -210,7 +217,8 @@ def spiral(R):
         x, y = x+dx, y+dy
 
 def find_particle_around_position(frame, flood_frame, prev_x, prev_y, particle_number,
-                                  treshold=100, invert=False, min_size=16, max_size=2500, max_distance=50):
+                                  treshold=100, invert=False, min_size=16, max_size=2500, max_distance=50,
+                                  return_area=False):
     """
     Finds a particle around prev_x, prev_y up to max_distance away (square with a 2*max_distance side).
 
@@ -228,16 +236,18 @@ def find_particle_around_position(frame, flood_frame, prev_x, prev_y, particle_n
     for dx, dy in spiral(max_distance):
         cx = prev_x + dx
         cy = prev_y + dy
-        if (flood_frame[cx][cy] == 0 and
+        if (cx < len(flood_frame) and cy < len(flood_frame[cx]) and
+            cx >= 0 and cy >= 0 and
+            flood_frame[cx][cy] == 0 and
             frame[cx][cy] > treshold):
             flood_frame, particle = flood_fill(frame, flood_frame,
                                          cx, cy, particle_number, treshold=treshold,
-                                         invert=invert)
+                                         invert=invert, return_area=return_area)
             if min_size < particle[2] < max_size:
                 return flood_frame, particle[:]
-    return flood_frame, [0, 0, 0, 0, 0]
+    return flood_frame, [0, 0, 0, 0, 0, []]
     
-def simple_tracking(frames, treshold=100, invert=False, min_size=16, max_size=2500, max_distance=50):
+def simple_tracking(frames, treshold=100, invert=False, min_size=16, max_size=2500, max_distance=50, return_area=False):
     """
     Tracks particles on all frames using a simple flood-fill of pixels above treshold.
     Args:
@@ -260,7 +270,8 @@ def simple_tracking(frames, treshold=100, invert=False, min_size=16, max_size=25
     """
     positions = [] # positions[frame][particle][x, y, ...]
     flood_frame, particles = find_particles_first_frame(frames[0],
-        treshold=treshold, invert=invert, min_size=min_size, max_size=max_size)
+        treshold=treshold, invert=invert, min_size=min_size, max_size=max_size,
+        return_area=return_area)
     positions.append(particles[:])
     for i in range(1, len(frames)):
         flood_frame = np.zeros_like(frames[i])
@@ -271,7 +282,7 @@ def simple_tracking(frames, treshold=100, invert=False, min_size=16, max_size=25
                 int(round(positions[-1][particle_number][1])),
                 particle_number + 1, treshold=treshold, invert=invert, # particle_number + 1 to avoid using 0.
                 min_size=min_size, max_size=max_size,
-                max_distance=max_distance)
+                max_distance=max_distance, return_area=return_area)
             cparticles.append(particle)
         positions.append(cparticles)
     return positions
@@ -309,7 +320,7 @@ def simulation_example(show=True):
     positions1 = np.array(generate_particle_in_trap((1, 2), phi=0.1, center=(25, 25), number_of_points=Nframes))
     positions2 = np.array(generate_particle_in_trap((1, 2), phi=1.1, center=(25, 75), number_of_points=Nframes))
 
-    if 1: # generate images. Takes some time - do it once and then skip it.
+    if 0: # generate images. Takes some time - do it once and then skip it.
         for i in range(len(positions1)):
             img = generate_gaussian_particles.make_frame((100, 50),
                 [[*positions1[i], 220, 5],
